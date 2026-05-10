@@ -19,7 +19,71 @@ import tensorflow as tf
 from PIL import Image
 from tensorflow.keras.models import load_model
 
+# ==============================
+# Constants
+# ==============================
+MODEL_PATH = "efficientnetb3_retinal.h5"
+FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID"  # Replace with your actual file ID
 
+CLASS_NAMES = [
+    "Diabetic Retinopathy",
+    "Disc Edema",
+    "Healthy",
+    "Myopia",
+    "Pterygium",
+    "Retinal Detachment",
+    "Retinitis Pigmentosa",
+]
+
+SEVERITY_COLOR = {
+    "Diabetic Retinopathy": "#ef4444",
+    "Disc Edema":           "#ef4444",
+    "Healthy":              "#22c55e",
+    "Myopia":               "#f59e0b",
+    "Pterygium":            "#f59e0b",
+    "Retinal Detachment":   "#dc2626",
+    "Retinitis Pigmentosa": "#ef4444",
+}
+
+DISEASE_INFO = {
+    "Diabetic Retinopathy": {
+        "icon": "🩺",
+        "desc": "Damage to the retinal blood vessels caused by diabetes.",
+        "action": "Consult an ophthalmologist immediately for further evaluation.",
+    },
+    "Disc Edema": {
+        "icon": "🧠",
+        "desc": "Swelling of the optic disc, often indicating raised intracranial pressure.",
+        "action": "Urgent neurological and ophthalmological assessment required.",
+    },
+    "Healthy": {
+        "icon": "✅",
+        "desc": "No signs of retinal disease detected.",
+        "action": "Maintain regular annual eye check-ups.",
+    },
+    "Myopia": {
+        "icon": "👓",
+        "desc": "Nearsightedness caused by elongation of the eyeball.",
+        "action": "Consult an optometrist for corrective lenses.",
+    },
+    "Pterygium": {
+        "icon": "🔬",
+        "desc": "A benign growth of conjunctival tissue onto the cornea.",
+        "action": "Monitor growth; surgical removal if vision is affected.",
+    },
+    "Retinal Detachment": {
+        "icon": "🚨",
+        "desc": "The retina separates from the underlying tissue — a medical emergency.",
+        "action": "Seek emergency ophthalmological care immediately.",
+    },
+    "Retinitis Pigmentosa": {
+        "icon": "🧬",
+        "desc": "A genetic disorder causing progressive retinal degeneration.",
+        "action": "Consult a retinal specialist for management and genetic counseling.",
+    },
+}
+
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 # ==============================
 # Page Configuration
 # ==============================
@@ -297,71 +361,9 @@ st.markdown("""
 
 
 # ==============================
-# Constants
 # ==============================
-MODEL_PATH = "efficientnetb3_retinal.h5"
-FILE_ID    = "YOUR_GOOGLE_DRIVE_FILE_ID"   # ← Replace with your actual Google Drive file ID
-
-CLASS_NAMES = [
-    "Diabetic Retinopathy",
-    "Disc Edema",
-    "Healthy",
-    "Myopia",
-    "Pterygium",
-    "Retinal Detachment",
-    "Retinitis Pigmentosa",
-]
-
-SEVERITY_COLOR = {
-    "Diabetic Retinopathy": "#ef4444",
-    "Disc Edema":           "#ef4444",
-    "Healthy":              "#22c55e",
-    "Myopia":               "#f59e0b",
-    "Pterygium":            "#f59e0b",
-    "Retinal Detachment":   "#dc2626",
-    "Retinitis Pigmentosa": "#ef4444",
-}
-
-DISEASE_INFO = {
-    "Diabetic Retinopathy": {
-        "icon":   "🩺",
-        "desc":   "Damage to the retinal blood vessels caused by chronic high blood sugar levels in diabetic patients.",
-        "action": "Consult an ophthalmologist immediately for further evaluation and possible laser therapy.",
-    },
-    "Disc Edema": {
-        "icon":   "🧠",
-        "desc":   "Swelling of the optic disc, often indicating raised intracranial pressure or optic neuritis.",
-        "action": "Urgent neurological and ophthalmological assessment required.",
-    },
-    "Healthy": {
-        "icon":   "✅",
-        "desc":   "No signs of retinal disease detected. The retina appears structurally normal.",
-        "action": "Maintain regular annual eye check-ups to monitor eye health.",
-    },
-    "Myopia": {
-        "icon":   "👓",
-        "desc":   "Nearsightedness caused by elongation of the eyeball, leading to blurred distant vision.",
-        "action": "Consult an optometrist or ophthalmologist for corrective lenses or refractive surgery evaluation.",
-    },
-    "Pterygium": {
-        "icon":   "🔬",
-        "desc":   "A benign, wedge-shaped growth of conjunctival tissue extending onto the corneal surface.",
-        "action": "Monitor growth; surgical removal recommended if vision is affected or discomfort persists.",
-    },
-    "Retinal Detachment": {
-        "icon":   "🚨",
-        "desc":   "The retina separates from the underlying retinal pigment epithelium — a sight-threatening emergency.",
-        "action": "Seek emergency ophthalmological care immediately. Delay can result in permanent vision loss.",
-    },
-    "Retinitis Pigmentosa": {
-        "icon":   "🧬",
-        "desc":   "A hereditary degenerative disease causing progressive loss of photoreceptor cells in the retina.",
-        "action": "Consult a retinal specialist for management strategies and genetic counseling.",
-    },
-}
-
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-
+# LLM Explanation — Ollama أو Claude API
+# ==============================
 PROMPT_TEMPLATE = """You are an ophthalmology AI assistant.
 
 Write exactly 5 short medical lines about this eye disease prediction:
@@ -377,92 +379,12 @@ Structure (5 lines only, no headers, no repetition):
 5. Recommended next step."""
 
 
-# ==============================
-# Helper Utilities
-# ==============================
 def _clean_lines(text: str) -> str:
-    """Return the first 5 non-empty lines of text."""
+    """خذ أول 5 أسطر غير فارغة."""
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     return "\n".join(lines[:5])
 
 
-# ==============================
-# Grok LLM Functions
-# ==============================
-def _test_grok_connection(api_key: str) -> tuple:
-    """Test connectivity to the xAI Grok API. Returns (success: bool, message: str)."""
-    if not api_key.strip():
-        return False, "❌ Please enter your xAI API Key first."
-    try:
-        r = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key.strip()}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "grok-3",
-                "messages": [{"role": "user", "content": "hi"}],
-                "max_tokens": 5,
-            },
-            timeout=10,
-        )
-        if r.status_code == 200:
-            return True, "✅ Grok connected successfully!"
-        if r.status_code == 401:
-            return False, "❌ Invalid API Key — please check your key."
-        return False, f"⚠️ Unexpected response: {r.status_code}"
-    except requests.exceptions.ConnectionError:
-        return False, "❌ Cannot reach api.x.ai — check your internet connection."
-    except requests.exceptions.Timeout:
-        return False, "❌ Request timed out — server not responding."
-    except Exception as e:
-        return False, f"❌ Error: {e}"
-
-
-def grok_llm_explain(disease: str, confidence: float, grok_model: str, api_key: str) -> str:
-    """Call xAI Grok API and return a 5-line medical explanation."""
-    if not api_key.strip():
-        return "ERROR: Enter your xAI API Key in the sidebar settings."
-
-    prompt = PROMPT_TEMPLATE.format(disease=disease, confidence=confidence * 100)
-    try:
-        r = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key.strip()}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": grok_model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 300,
-                "temperature": 0.1,
-            },
-            timeout=30,
-        )
-        r.raise_for_status()
-        raw = r.json()["choices"][0]["message"]["content"].strip()
-        return _clean_lines(raw)
-
-    except requests.exceptions.ConnectionError:
-        return "ERROR: Cannot reach xAI API — check your internet connection."
-    except requests.exceptions.Timeout:
-        return "ERROR: Request timed out — model is slow or not responding."
-    except requests.exceptions.HTTPError as e:
-        status = e.response.status_code if e.response is not None else "?"
-        if status == 401:
-            return "ERROR: Invalid API Key — please verify your key."
-        if status == 429:
-            return "ERROR: Rate limit exceeded — please wait and try again."
-        return f"ERROR: HTTP {status} — {e}"
-    except Exception as e:
-        return f"ERROR: Unexpected error: {e}"
-
-
-# ==============================
-# Ollama / Claude LLM Functions (kept for reference)
-# ==============================
 def _explain_via_ollama(disease: str, confidence: float, ollama_model: str, ollama_url: str) -> str:
     prompt = PROMPT_TEMPLATE.format(disease=disease, confidence=confidence * 100)
     payload = {
@@ -479,18 +401,18 @@ def _explain_via_ollama(disease: str, confidence: float, ollama_model: str, olla
 
 
 def _test_ollama_connection(ollama_url: str) -> tuple:
-    """Test connectivity to a local Ollama server."""
+    """يختبر الاتصال بـ Ollama ويعيد (نجح، رسالة)."""
     try:
         r = requests.get(ollama_url.rstrip("/"), timeout=5)
         if r.status_code == 200:
-            return True, "✅ Ollama is running!"
-        return False, f"⚠️ Unexpected response: {r.status_code}"
+            return True, "✅ Ollama يعمل بنجاح!"
+        return False, f"⚠️ استجابة غير متوقعة: {r.status_code}"
     except requests.exceptions.ConnectionError:
-        return False, "❌ Cannot connect — make sure `ollama serve` is running."
+        return False, "❌ لا يمكن الاتصال — تأكد أن: ollama serve يعمل"
     except requests.exceptions.Timeout:
-        return False, "❌ Timed out — server not responding."
+        return False, "❌ انتهت المهلة — الخادم لا يستجيب"
     except Exception as e:
-        return False, f"❌ Error: {e}"
+        return False, f"❌ خطأ: {e}"
 
 
 def _explain_via_claude(disease: str, confidence: float, api_key: str) -> str:
@@ -525,26 +447,26 @@ def local_llm_explain(
     try:
         if backend == "claude":
             if not anthropic_api_key.strip():
-                return "ERROR: Enter Anthropic API Key in sidebar settings."
+                return "ERROR: أدخل Anthropic API Key في إعدادات الشريط الجانبي."
             return _explain_via_claude(disease, confidence, anthropic_api_key.strip())
         else:
             return _explain_via_ollama(disease, confidence, ollama_model, ollama_url)
 
     except requests.exceptions.ConnectionError:
         if backend == "ollama":
-            return f"ERROR: Cannot connect to Ollama at {ollama_url} — make sure `ollama serve` is running."
-        return "ERROR: Cannot connect to Anthropic API — check your internet connection."
+            return f"ERROR: تعذّر الاتصال بـ Ollama على {ollama_url} — تأكد أن: ollama serve يعمل"
+        return "ERROR: تعذّر الاتصال بـ Anthropic API — تحقق من اتصالك بالإنترنت."
     except requests.exceptions.Timeout:
-        return "ERROR: Request timed out — model is slow or not loaded."
+        return "ERROR: انتهت مهلة الاستجابة — النموذج بطيء أو غير محمّل."
     except requests.exceptions.HTTPError as e:
         status = e.response.status_code if e.response is not None else "?"
         if status == 401:
-            return "ERROR: Invalid API Key — please verify your key."
+            return "ERROR: API Key غير صالح — تحقق من المفتاح."
         if status == 404 and backend == "ollama":
-            return f"ERROR: Model '{ollama_model}' not found — run: ollama pull {ollama_model}"
+            return f"ERROR: النموذج «{ollama_model}» غير محمّل — نفّذ: ollama pull {ollama_model}"
         return f"ERROR: HTTP {status} — {e}"
     except Exception as e:
-        return f"ERROR: Unexpected error: {e}"
+        return f"ERROR: خطأ غير متوقع: {e}"
 
 
 # ==============================
@@ -554,7 +476,7 @@ def local_llm_explain(
 def load_model_cached():
     """Download (if needed) and load the EfficientNetB3 model."""
     if not os.path.exists(MODEL_PATH):
-        with st.spinner("⬇️ Downloading model..."):
+        with st.spinner("⬇️ جاري تحميل النموذج..."):
             gdown.download(
                 f"https://drive.google.com/uc?id={FILE_ID}",
                 MODEL_PATH,
@@ -562,17 +484,17 @@ def load_model_cached():
             )
 
     if not os.path.exists(MODEL_PATH):
-        st.error("❌ Model file not found — check your internet connection.")
+        st.error("❌ النموذج غير موجود — تحقق من اتصالك بالإنترنت.")
         st.stop()
 
     if os.path.getsize(MODEL_PATH) < 5_000_000:
-        st.error("❌ Model file is corrupted — delete it and restart the app.")
+        st.error("❌ ملف النموذج تالف — احذفه وأعد تشغيل التطبيق.")
         st.stop()
 
     try:
         return load_model(MODEL_PATH, compile=False)
     except Exception as exc:
-        st.error(f"❌ Failed to load model: {exc}")
+        st.error(f"❌ فشل تحميل النموذج: {exc}")
         st.stop()
 
 
@@ -666,39 +588,39 @@ with st.sidebar:
     <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:700;
                 color:#16a34a; margin-bottom:1rem; padding-bottom:0.5rem;
                 border-bottom:2px solid rgba(22,163,74,0.25);">
-        🤖 Smart Explanation Settings (Grok)
+        🤖 إعدادات الشرح الذكي (Grok)
     </div>
     """, unsafe_allow_html=True)
 
-    enable_llm = st.toggle("🔘 Enable LLM Explanation", value=True)
+    enable_llm = st.toggle("🔘 تفعيل شرح LLM", value=True)
 
     grok_model = st.selectbox(
-        "Grok Model",
-        options=["grok-3", "grok-3-fast", "grok-3-mini", "grok-3-mini-fast"],
+        "نموذج Grok",
+        options="grok-4.20-reasoning",
         index=0,
-        help="Select a Grok model from xAI",
+        help="اختر نموذج Grok من xAI",
     )
 
     grok_api_key = st.text_input(
         "🔑 xAI API Key",
         type="password",
-        placeholder="xai-...",
-        help="Get your key from: console.x.ai",
+        placeholder="xai-bjo04usdkd7qAEWFUi49DuooTxS67OQACmwGGsK6EHQttLXSQ61h4Vs5zd3WMwEodrAzSbnHdC9X65dw",
+        help="احصل على مفتاحك من: console.x.ai",
     )
 
-    if st.button("🔌 Test Grok Connection", use_container_width=True):
+    if st.button("🔌 اختبار الاتصال بـ Grok", use_container_width=True):
         ok, msg = _test_grok_connection(grok_api_key)
         (st.success if ok else st.error)(msg)
 
     st.markdown("""
     <div style="margin-top:1rem; font-size:0.75rem; color:#4b7a5e; line-height:2;">
-        <span style="color:#15803d; font-weight:500;">Get your API key:</span><br>
+        <span style="color:#15803d; font-weight:500;">للحصول على مفتاح API:</span><br>
         <a href="https://console.x.ai" target="_blank"
            style="color:#16a34a; text-decoration:none;">
             🔗 console.x.ai
         </a>
         <br><br>
-        <span style="color:#15803d; font-weight:500;">Available models:</span><br>
+        <span style="color:#15803d; font-weight:500;">النماذج المتاحة:</span><br>
         <code style="background:rgba(22,163,74,0.1); color:#15803d;
                      padding:0.15rem 0.5rem; border-radius:4px;">grok-3</code>
         &nbsp;·&nbsp;
@@ -725,7 +647,7 @@ with diseases_col:
     <div style="font-family:'Syne',sans-serif; font-size:0.9rem; font-weight:700;
                 color:#16a34a; margin-bottom:0.9rem; padding-bottom:0.5rem;
                 border-bottom:2px solid rgba(22,163,74,0.25);">
-        🔬 Detectable Diseases
+        🔬 الأمراض المكتشفة
     </div>
     <div style="display:flex; flex-direction:column; gap:0.45rem;">
         <div style="display:flex; align-items:center; gap:0.55rem; background:#fff;
@@ -797,12 +719,12 @@ with diseases_col:
 
 # ── Column 2: Image Upload ──
 with left_col:
-    st.markdown('<div class="upload-label">Upload Eye Image</div>', unsafe_allow_html=True)
-    st.markdown('<div class="upload-hint">Supported formats: JPG · PNG</div>', unsafe_allow_html=True)
+    st.markdown('<div class="upload-label">رفع صورة العين</div>', unsafe_allow_html=True)
+    st.markdown('<div class="upload-hint">الصيغ المدعومة: JPG · PNG</div>', unsafe_allow_html=True)
     st.markdown('<br>', unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader(
-        label="Choose image",
+        label="اختر صورة",
         type=["jpg", "jpeg", "png"],
         label_visibility="collapsed",
     )
@@ -813,12 +735,12 @@ with left_col:
         thumb.thumbnail((210, 210))
         st.markdown('<div class="img-card">', unsafe_allow_html=True)
         st.image(thumb, use_container_width=False, width=220)
-        st.markdown('<div class="img-card-label">Original Image</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="img-card-label">الصورة الأصلية</div></div>', unsafe_allow_html=True)
     else:
         st.markdown("""
         <div class="upload-section">
             <div style="font-size:2.5rem; margin-bottom:0.75rem; opacity:0.5">👁️</div>
-            <div style="font-size:0.88rem; color:#6aaa85;">Drag & drop image here<br>or click to browse</div>
+            <div style="font-size:0.88rem; color:#6aaa85;">اسحب وأفلت الصورة هنا<br>أو انقر للاختيار</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -826,7 +748,7 @@ with left_col:
 # ── Column 3: Analysis Results ──
 with right_col:
     if uploaded_file:
-        with st.spinner("🔍 Analyzing..."):
+        with st.spinner("🔍 جاري التحليل..."):
             pred, conf, all_preds = predict(image, model)
             heatmap  = gradcam(image, model)
             overlay  = overlay_heatmap(image, heatmap)
@@ -838,13 +760,13 @@ with right_col:
         st.markdown(f"""
         <div style="margin-bottom:1.5rem;">
             <div style="font-size:0.72rem; letter-spacing:0.18em; text-transform:uppercase;
-                        color:#6aaa85; margin-bottom:0.6rem;">Diagnosis Result</div>
+                        color:#6aaa85; margin-bottom:0.6rem;">نتيجة التشخيص</div>
             <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
                 <span style="font-size:1.8rem;">{info.get('icon', '🔬')}</span>
                 <span style="font-family:'Syne',sans-serif; font-size:1.6rem; font-weight:800;
                              color:{color}; letter-spacing:-0.01em;">{pred}</span>
             </div>
-            <div class="confidence-label">Confidence Level</div>
+            <div class="confidence-label">مستوى الثقة</div>
             <div class="confidence-value">{conf * 100:.1f}<span>%</span></div>
         </div>
         """, unsafe_allow_html=True)
@@ -854,11 +776,11 @@ with right_col:
         if info:
             st.markdown(f"""
             <div class="disease-card">
-                <div class="disease-card-title">📋 About This Condition</div>
+                <div class="disease-card-title">📋 عن هذه الحالة</div>
                 <div class="disease-card-text">{info['desc']}</div>
                 <div style="margin-top:0.7rem; padding-top:0.7rem;
                              border-top:1px solid rgba(56,189,248,0.1);">
-                    <span style="font-size:0.75rem; color:#16a34a; font-weight:600;">Recommendation: </span>
+                    <span style="font-size:0.75rem; color:#16a34a; font-weight:600;">التوصية: </span>
                     <span class="disease-card-text">{info['action']}</span>
                 </div>
             </div>
@@ -866,14 +788,14 @@ with right_col:
 
         # ── LLM Explanation (Grok) ──
         if enable_llm:
-            with st.spinner(f"🤖 Generating medical explanation via Grok ({grok_model})..."):
+            with st.spinner(f"🤖 جاري توليد الشرح الطبي عبر Grok ({grok_model})..."):
                 llm_result = grok_llm_explain(pred, conf, grok_model=grok_model, api_key=grok_api_key)
 
             if llm_result.startswith("ERROR:"):
                 error_msg = llm_result.replace("ERROR:", "").strip()
                 st.markdown(f"""
                 <div class="llm-card">
-                    <div class="llm-card-title">🤖 LLM Explanation — Grok ({grok_model})</div>
+                    <div class="llm-card-title">🤖 شرح النموذج اللغوي — Grok ({grok_model})</div>
                     <div class="llm-error">⚠️ {error_msg}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -885,7 +807,7 @@ with right_col:
                 )
                 st.markdown(f"""
                 <div class="llm-card">
-                    <div class="llm-card-title">🤖 LLM Explanation — Grok ({grok_model})</div>
+                    <div class="llm-card-title">🤖 شرح النموذج اللغوي — Grok ({grok_model})</div>
                     {lines_html}
                 </div>
                 """, unsafe_allow_html=True)
@@ -894,21 +816,21 @@ with right_col:
         st.markdown('<br>', unsafe_allow_html=True)
         st.markdown("""
         <div style="font-size:0.72rem; letter-spacing:0.18em; text-transform:uppercase;
-                    color:#6aaa85; margin-bottom:0.75rem;">Visual Analysis — Grad-CAM</div>
+                    color:#6aaa85; margin-bottom:0.75rem;">التحليل البصري — Grad-CAM</div>
         """, unsafe_allow_html=True)
 
         v1, v2 = st.columns(2)
         with v1:
             st.markdown('<div class="img-card">', unsafe_allow_html=True)
             st.image(heatmap, width=200, channels="BGR")
-            st.markdown('<div class="img-card-label">Heatmap</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="img-card-label">خريطة الحرارة</div></div>', unsafe_allow_html=True)
         with v2:
             st.markdown('<div class="img-card">', unsafe_allow_html=True)
             st.image(overlay, width=200, channels="BGR")
-            st.markdown('<div class="img-card-label">Overlay</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="img-card-label">الصورة المدمجة</div></div>', unsafe_allow_html=True)
 
         # ── All Class Probabilities ──
-        with st.expander("📊 All Class Probabilities"):
+        with st.expander("📊 جميع الاحتمالات"):
             for i in np.argsort(all_preds)[::-1]:
                 pct       = float(all_preds[i]) * 100
                 bar_color = color if CLASS_NAMES[i] == pred else "#bbf7d0"
@@ -931,7 +853,7 @@ with right_col:
                     justify-content:center; height:300px; opacity:0.4; text-align:center;">
             <div style="font-size:3rem; margin-bottom:1rem;">🔬</div>
             <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:600; color:#15803d;">
-                Awaiting image for analysis
+                في انتظار صورة للتحليل
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -942,8 +864,7 @@ with right_col:
 # ==============================
 st.markdown("""
 <div class="disclaimer">
-    ⚠️ <strong>Medical Disclaimer:</strong> This system is a preliminary screening aid and does not replace
-    consultation with a qualified medical professional. Please consult a certified ophthalmologist
-    for a definitive diagnosis and appropriate treatment.
+    ⚠️ <strong>تنبيه طبي:</strong> هذا النظام أداةٌ مساعدة للفحص الأولي ولا يُغني عن استشارة طبيب متخصص.
+    يُرجى مراجعة طبيب عيون معتمد للتشخيص النهائي والعلاج المناسب.
 </div>
 """, unsafe_allow_html=True)
