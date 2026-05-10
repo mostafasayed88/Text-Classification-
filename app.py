@@ -23,7 +23,7 @@ from tensorflow.keras.models import load_model
 # Constants
 # ==============================
 MODEL_PATH = "efficientnetb3_retinal.h5"
-FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID"
+FILE_ID    = "YOUR_GOOGLE_DRIVE_FILE_ID"   # ← replace with your actual Google Drive file ID
 
 CLASS_NAMES = [
     "Diabetic Retinopathy",
@@ -99,6 +99,7 @@ Structure (5 lines only, no headers, no repetition):
 4. Severity level (Mild / Moderate / Severe / Emergency).
 5. Recommended next step."""
 
+
 # ==============================
 # Page Configuration
 # ==============================
@@ -108,6 +109,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
 
 # ==============================
 # Custom CSS
@@ -130,6 +132,7 @@ st.markdown("""
     #MainMenu, footer, header { visibility: hidden; }
     .block-container { padding: 0 2rem 4rem; max-width: 1200px; }
 
+    /* ── Hero ── */
     .hero {
         position: relative;
         text-align: center;
@@ -167,6 +170,7 @@ st.markdown("""
         margin: 0 0 2.5rem;
     }
 
+    /* ── Upload Section ── */
     .upload-section {
         background: #ffffff;
         border: 2px dashed rgba(22,163,74,0.35);
@@ -195,6 +199,7 @@ st.markdown("""
     [data-testid="stFileUploader"] > div { border: none !important; background: transparent !important; padding: 0 !important; }
     [data-testid="stFileUploader"] label { color: #16a34a !important; font-size: 0.9rem; }
 
+    /* ── Image Cards ── */
     .img-card {
         background: #ffffff;
         border: 1px solid #bbf7d0;
@@ -220,6 +225,7 @@ st.markdown("""
         object-fit: cover;
     }
 
+    /* ── Widgets ── */
     .stSelectbox label, .stTextInput label, .stToggle label,
     .stRadio label, .stExpander summary, p, span, div {
         color: #166534 !important;
@@ -231,6 +237,7 @@ st.markdown("""
         color: #14532d !important;
     }
 
+    /* ── Progress Bar ── */
     .stProgress > div > div > div > div {
         background: linear-gradient(90deg, #22c55e, #16a34a) !important;
         border-radius: 999px !important;
@@ -241,6 +248,7 @@ st.markdown("""
         height: 8px !important;
     }
 
+    /* ── Confidence Display ── */
     .confidence-label {
         font-size: 0.78rem;
         letter-spacing: 0.15em;
@@ -257,6 +265,7 @@ st.markdown("""
     }
     .confidence-value span { font-size: 1rem; font-weight: 400; color: #6aaa85; }
 
+    /* ── Disease Card ── */
     .disease-card {
         background: #ffffff;
         border: 1px solid #bbf7d0;
@@ -275,6 +284,7 @@ st.markdown("""
     }
     .disease-card-text { font-size: 0.85rem; color: #4b7a5e; line-height: 1.7; }
 
+    /* ── LLM Explanation Card ── */
     .llm-card {
         background: #f0fdf4;
         border: 1px solid #86efac;
@@ -312,6 +322,7 @@ st.markdown("""
         margin-top: 0.5rem;
     }
 
+    /* ── Disclaimer ── */
     .disclaimer {
         background: #fffbeb;
         border: 1px solid #fde68a;
@@ -325,17 +336,20 @@ st.markdown("""
         line-height: 1.65;
     }
 
+    /* ── Sidebar ── */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%) !important;
         border-right: 2px solid #bbf7d0 !important;
     }
 
+    /* ── Expander ── */
     .stExpander {
         background: #ffffff !important;
         border: 1px solid #bbf7d0 !important;
         border-radius: 12px !important;
     }
 
+    /* ── Button ── */
     .stButton > button {
         background: linear-gradient(135deg, #16a34a, #15803d) !important;
         color: #ffffff !important;
@@ -357,6 +371,7 @@ st.markdown("""
 # Grok LLM Functions
 # ==============================
 def _clean_lines(text: str) -> str:
+    """Keep the first 5 non-empty lines."""
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     return "\n".join(lines[:5])
 
@@ -439,20 +454,77 @@ def grok_llm_explain(disease: str, confidence: float, grok_model: str, api_key: 
 # ==============================
 @st.cache_resource
 def load_model_cached():
+    """Download (if needed) and load the EfficientNetB3 model."""
     if not os.path.exists(MODEL_PATH):
-        with st.spinner("⬇️ جاري تحميل النموذج..."):
-            gdown.download(
-                f"https://drive.google.com/uc?id={FILE_ID}",
-                MODEL_PATH,
-                quiet=False,
-            )
 
-    if not os.path.exists(MODEL_PATH):
-        st.error("❌ النموذج غير موجود — تحقق من اتصالك بالإنترنت.")
-        st.stop()
+        if FILE_ID == "YOUR_GOOGLE_DRIVE_FILE_ID":
+            st.error("❌ لم يتم تعيين FILE_ID — أضف معرّف ملف Google Drive الحقيقي في الكود.")
+            st.stop()
+
+        with st.spinner("⬇️ جاري تحميل النموذج..."):
+            success = False
+
+            # Method 1: gdown with fuzzy=True (handles confirmation pages)
+            try:
+                gdown.download(
+                    id=FILE_ID,
+                    output=MODEL_PATH,
+                    quiet=False,
+                    fuzzy=True,
+                )
+                if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 5_000_000:
+                    success = True
+            except Exception as e:
+                st.warning(f"⚠️ gdown (method 1) فشل: {e}")
+
+            # Method 2: gdown with direct URL + confirm token
+            if not success:
+                try:
+                    url = f"https://drive.google.com/uc?id={FILE_ID}&export=download&confirm=t"
+                    gdown.download(url, MODEL_PATH, quiet=False)
+                    if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 5_000_000:
+                        success = True
+                except Exception as e:
+                    st.warning(f"⚠️ gdown (method 2) فشل: {e}")
+
+            # Method 3: requests session — bypasses large-file confirmation cookie
+            if not success:
+                try:
+                    session = requests.Session()
+                    url = f"https://drive.google.com/uc?id={FILE_ID}&export=download"
+                    response = session.get(url, stream=True, timeout=30)
+
+                    for key, value in response.cookies.items():
+                        if key.startswith("download_warning"):
+                            url = f"https://drive.google.com/uc?id={FILE_ID}&export=download&confirm={value}"
+                            response = session.get(url, stream=True, timeout=60)
+                            break
+
+                    with open(MODEL_PATH, "wb") as f:
+                        for chunk in response.iter_content(chunk_size=32768):
+                            if chunk:
+                                f.write(chunk)
+
+                    if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 5_000_000:
+                        success = True
+                except Exception as e:
+                    st.warning(f"⚠️ requests fallback فشل: {e}")
+
+            if not success:
+                if os.path.exists(MODEL_PATH):
+                    os.remove(MODEL_PATH)
+                st.error(
+                    "❌ فشل تحميل النموذج بجميع الطرق.\n\n"
+                    "تحقق من:\n"
+                    "- FILE_ID صحيح\n"
+                    "- الملف مشارك للعموم (Anyone with the link → Viewer)\n"
+                    "- حجم الملف أكبر من 5 MB"
+                )
+                st.stop()
 
     if os.path.getsize(MODEL_PATH) < 5_000_000:
-        st.error("❌ ملف النموذج تالف — احذفه وأعد تشغيل التطبيق.")
+        os.remove(MODEL_PATH)
+        st.error("❌ ملف النموذج تالف أو غير مكتمل — أعد تشغيل التطبيق.")
         st.stop()
 
     try:
@@ -466,6 +538,7 @@ def load_model_cached():
 # Image Processing Helpers
 # ==============================
 def preprocess(img: Image.Image) -> np.ndarray:
+    """Resize and preprocess a PIL image for EfficientNetB3."""
     img = img.resize((300, 300))
     arr = np.array(img)
     arr = tf.keras.applications.efficientnet.preprocess_input(arr)
@@ -473,12 +546,14 @@ def preprocess(img: Image.Image) -> np.ndarray:
 
 
 def predict(img: Image.Image, model) -> tuple[str, float, np.ndarray]:
+    """Return (class_name, confidence, all_probabilities)."""
     preds = model.predict(preprocess(img))
     idx = int(np.argmax(preds[0]))
     return CLASS_NAMES[idx], float(np.max(preds)), preds[0]
 
 
 def gradcam(img: Image.Image, model) -> np.ndarray:
+    """Compute a Grad-CAM heatmap (BGR, uint8) for the top predicted class."""
     arr = np.array(img.resize((300, 300)))
     arr = tf.keras.applications.efficientnet.preprocess_input(arr)
     arr = np.expand_dims(arr, axis=0)
@@ -505,6 +580,7 @@ def gradcam(img: Image.Image, model) -> np.ndarray:
 
     grads = tape.gradient(loss, conv_outputs)
     grads = grads / (tf.reduce_mean(tf.abs(grads)) + 1e-8)
+
     weights = tf.reduce_mean(grads, axis=(1, 2))
     cam = tf.reduce_sum(weights[:, None, None, :] * conv_outputs, axis=-1)[0].numpy()
 
@@ -518,6 +594,7 @@ def gradcam(img: Image.Image, model) -> np.ndarray:
 
 
 def overlay_heatmap(img: Image.Image, heatmap: np.ndarray) -> np.ndarray:
+    """Blend the original image with the Grad-CAM heatmap."""
     arr = np.array(img.resize((300, 300)))
     return cv2.addWeighted(arr, 0.75, heatmap, 0.25, 0)
 
@@ -554,7 +631,7 @@ with st.sidebar:
     grok_model = st.selectbox(
         "نموذج Grok",
         options=["grok-3", "grok-3-fast", "grok-3-mini", "grok-3-mini-fast"],
-        index=2,                      # default: grok-3-mini
+        index=2,
         help="اختر نموذج Grok من xAI",
     )
 
@@ -707,8 +784,8 @@ with right_col:
     if uploaded_file:
         with st.spinner("🔍 جاري التحليل..."):
             pred, conf, all_preds = predict(image, model)
-            heatmap = gradcam(image, model)
-            overlay = overlay_heatmap(image, heatmap)
+            heatmap  = gradcam(image, model)
+            overlay  = overlay_heatmap(image, heatmap)
 
         color = SEVERITY_COLOR.get(pred, "#38bdf8")
         info  = DISEASE_INFO.get(pred, {})
