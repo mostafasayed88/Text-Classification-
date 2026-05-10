@@ -402,8 +402,35 @@ with right:
 
             heatmap = gradcam(image, model)
 
-            overlay = overlay_heatmap(image, heatmap)
+def overlay_heatmap(img, heatmap):
 
+    # resize original image
+    img = img.resize((300, 300))
+
+    original = np.array(img)
+
+    # تأكد أن heatmap ثلاثي القنوات
+    if len(heatmap.shape) == 2:
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_GRAY2BGR)
+
+    # تأكد من نفس الحجم
+    heatmap = cv2.resize(heatmap, (300, 300))
+
+    # تحويل datatype
+    original = original.astype(np.uint8)
+
+    heatmap = heatmap.astype(np.uint8)
+
+    # دمج الصور
+    overlay = cv2.addWeighted(
+        original,
+        0.7,
+        heatmap,
+        0.3,
+        0
+    )
+
+    return overlay
         st.markdown('<div class="card">', unsafe_allow_html=True)
 
         st.markdown(
