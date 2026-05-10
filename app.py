@@ -23,7 +23,7 @@ from tensorflow.keras.models import load_model
 # Constants
 # ==============================
 MODEL_PATH = "efficientnetb3_retinal.h5"
-FILE_ID    = "YOUR_GOOGLE_DRIVE_FILE_ID"   # ← replace with your actual Google Drive file ID
+FILE_ID    = "1qnrKRAWa7UU5YbtT2UqGDbJij7uH6dIz"   # ← replace with your actual Google Drive file ID
 
 CLASS_NAMES = [
     "Diabetic Retinopathy",
