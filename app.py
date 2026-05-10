@@ -532,7 +532,7 @@ with st.sidebar:
 
     grok_model = st.selectbox(
         "نموذج Grok",
-        options=GROK_MODELS,
+        options="grok-4.20-reasoning",
         index=0,
         help="اختر نموذج Grok من xAI",
     )
@@ -540,7 +540,7 @@ with st.sidebar:
     grok_api_key = st.text_input(
         "🔑 xAI API Key",
         type="password",
-        placeholder="xai-xxxxxxxxxxxxxxxxxx",
+        placeholder="xai-bjo04usdkd7qAEWFUi49DuooTxS67OQACmwGGsK6EHQttLXSQ61h4Vs5zd3WMwEodrAzSbnHdC9X65dw",
         help="احصل على مفتاحك من: console.x.ai",
     )
 
