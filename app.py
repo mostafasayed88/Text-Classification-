@@ -257,6 +257,7 @@ def gradcam(img, model):
 
     arr = np.expand_dims(arr, axis=0)
 
+    # آخر Conv Layer
     target_layer = None
 
     for layer in reversed(model.layers):
@@ -273,7 +274,8 @@ def gradcam(img, model):
 
         conv_outputs, predictions = grad_model(arr)
 
-        class_idx = tf.argmax(predictions[0])
+        # تحويل الـ tensor إلى integer
+        class_idx = int(tf.argmax(predictions[0]))
 
         loss = predictions[:, class_idx]
 
@@ -289,23 +291,17 @@ def gradcam(img, model):
 
     heatmap = np.maximum(heatmap, 0)
 
-    heatmap /= np.max(heatmap) + 1e-8
+    heatmap /= tf.reduce_max(heatmap) + 1e-8
 
-    heatmap = cv2.resize(heatmap.numpy(), (300, 300))
+    heatmap = heatmap.numpy()
+
+    heatmap = cv2.resize(heatmap, (300, 300))
 
     heatmap = np.uint8(255 * heatmap)
 
     heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 
     return heatmap
-
-
-def overlay_heatmap(img, heatmap):
-
-    arr = np.array(img.resize((300, 300)))
-
-    return cv2.addWeighted(arr, 0.7, heatmap, 0.3, 0)
-
 
 # =========================================================
 # LOAD MODEL
