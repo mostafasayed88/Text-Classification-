@@ -304,7 +304,7 @@ FILE_ID     = "1qnrKRAWa7UU5YbtT2UqGDbJij7uH6dIz"
 
 # Grok API (xAI — OpenAI-compatible)
 GROK_API_BASE = "https://api.x.ai/v1"
-GROK_MODELS   = ["grok-4.20-reasoning", "grok-3-beta", "grok-3", "grok-3-latest"]
+GROK_MODELS   = ["grok-3", "grok-3-fast", "grok-3-mini", "grok-3-mini-fast", "grok-3-beta", "grok-3-latest"]
 
 CLASS_NAMES = [
     "Diabetic Retinopathy",
@@ -649,16 +649,16 @@ with st.sidebar:
         <br><br>
         <span style="color:#15803d; font-weight:500;">النماذج المتاحة:</span><br>
         <code style="background:rgba(22,163,74,0.1); color:#15803d;
-                     padding:0.15rem 0.5rem; border-radius:4px;">grok-4.20-reasoning</code>
-        &nbsp;·&nbsp;
-        <code style="background:rgba(22,163,74,0.1); color:#15803d;
-                     padding:0.15rem 0.5rem; border-radius:4px;">grok-3-beta</code>
-        &nbsp;·&nbsp;
-        <code style="background:rgba(22,163,74,0.1); color:#15803d;
                      padding:0.15rem 0.5rem; border-radius:4px;">grok-3</code>
         &nbsp;·&nbsp;
         <code style="background:rgba(22,163,74,0.1); color:#15803d;
-                     padding:0.15rem 0.5rem; border-radius:4px;">grok-3-latest</code>
+                     padding:0.15rem 0.5rem; border-radius:4px;">grok-3-fast</code>
+        &nbsp;·&nbsp;
+        <code style="background:rgba(22,163,74,0.1); color:#15803d;
+                     padding:0.15rem 0.5rem; border-radius:4px;">grok-3-mini</code>
+        &nbsp;·&nbsp;
+        <code style="background:rgba(22,163,74,0.1); color:#15803d;
+                     padding:0.15rem 0.5rem; border-radius:4px;">grok-3-mini-fast</code>
     </div>
     """, unsafe_allow_html=True)
 
