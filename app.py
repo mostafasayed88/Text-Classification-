@@ -488,19 +488,14 @@ def _patch_input_layer():
     try:
         original_init = tf.keras.layers.InputLayer.__init__
 
-        def _patched_init(self, *args, **kwargs):
-            if "batch_shape" in kwargs:
-                batch_shape = kwargs.pop("batch_shape")
-                # batch_shape is (None, H, W, C) — strip the leading None
-                if batch_shape and batch_shape[0] is None:
-                    kwargs.setdefault("shape", tuple(batch_shape[1:]))
-                else:
-                    kwargs.setdefault("shape", tuple(batch_shape))
-            original_init(self, *args, **kwargs)
+        def _patched_input_layer_init(self, *args, **kwargs):
+    if "batch_shape" in kwargs:
+        batch_shape = kwargs.pop("batch_shape")
+        shape = tuple(batch_shape[1:]) if batch_shape[0] is None else tuple(batch_shape)
+        kwargs.setdefault("shape", shape)
+    _ORIGINAL_INPUT_LAYER_INIT(self, *args, **kwargs)  # ✅ always found
 
-        tf.keras.layers.InputLayer.__init__ = _patched_init
-    except Exception:
-        pass  # If patching fails, proceed anyway and let the load error surface normally
+tf.keras.layers.InputLayer.__init__ = _patched_input_layer_init
 
 
 _patch_input_layer()
