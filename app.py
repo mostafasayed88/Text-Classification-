@@ -302,8 +302,6 @@ def gradcam(img, model):
 
     heatmap = heatmap / (np.max(heatmap) + 1e-8)
 
-    heatmap = heatmap.numpy()
-
     heatmap = cv2.resize(heatmap, (300, 300))
 
     heatmap = np.uint8(255 * heatmap)
