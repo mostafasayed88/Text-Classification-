@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
 ║     Assistant For Detection Of Retinal Diseases              ║
-║     Built with Streamlit · EfficientNetB3 · Grad-CAM · Ollama║
+║     Built with Streamlit · EfficientNetB3 · Grad-CAM · Grok ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 
@@ -302,6 +302,10 @@ st.markdown("""
 MODEL_PATH  = "best_efficientnetb3.h5"
 FILE_ID     = "1qnrKRAWa7UU5YbtT2UqGDbJij7uH6dIz"
 
+# Grok API (xAI — OpenAI-compatible)
+GROK_API_BASE = "https://api.x.ai/v1"
+GROK_MODELS   = ["grok-3-beta", "grok-3", "grok-3-latest"]
+
 CLASS_NAMES = [
     "Diabetic Retinopathy",
     "Disc Edema",
@@ -376,7 +380,7 @@ Structure (5 lines only, no headers, no repetition):
 
 
 # ==============================
-# Ollama LLM Helpers
+# Grok LLM Helpers
 # ==============================
 def _clean_lines(text: str) -> str:
     """Return the first 5 non-empty lines of *text*."""
@@ -384,58 +388,84 @@ def _clean_lines(text: str) -> str:
     return "\n".join(lines[:5])
 
 
-def _explain_via_ollama(disease: str, confidence: float, ollama_model: str, ollama_url: str) -> str:
+def _explain_via_grok(disease: str, confidence: float, grok_model: str, api_key: str) -> str:
+    """Call the xAI Grok API (OpenAI-compatible) and return a cleaned 5-line explanation."""
     prompt = PROMPT_TEMPLATE.format(disease=disease, confidence=confidence * 100)
-    payload = {
-        "model": ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": 0.1,
-            "num_predict": 120,
-            "repeat_penalty": 1.2,
-            "num_ctx": 512,
-        },
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
     }
-    api_url = f"{ollama_url.rstrip('/')}/api/generate"
-    response = requests.post(api_url, json=payload, timeout=180)
+    payload = {
+        "model": grok_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 300,
+        "temperature": 0.1,
+    }
+    response = requests.post(
+        f"{GROK_API_BASE}/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=60,
+    )
     response.raise_for_status()
-    raw = response.json().get("response", "").strip()
+    raw = response.json()["choices"][0]["message"]["content"].strip()
     return _clean_lines(raw)
 
 
-def _test_ollama_connection(ollama_url: str) -> tuple[bool, str]:
-    """Return (success, message) after pinging the Ollama server."""
+def _test_grok_connection(api_key: str) -> tuple[bool, str]:
+    """Ping the xAI API with a minimal request. Return (success, message)."""
+    if not api_key or not api_key.strip():
+        return False, "❌ مفتاح API فارغ — أدخل مفتاحك من console.x.ai"
     try:
-        r = requests.get(ollama_url.rstrip("/"), timeout=5)
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key.strip()}",
+        }
+        payload = {
+            "model": "grok-3-beta",
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 5,
+        }
+        r = requests.post(
+            f"{GROK_API_BASE}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=15,
+        )
         if r.status_code == 200:
-            return True, "✅ Ollama يعمل بنجاح!"
+            return True, "✅ Grok API يعمل بنجاح!"
+        if r.status_code == 401:
+            return False, "❌ مفتاح API غير صالح — تحقق من console.x.ai"
         return False, f"⚠️ استجابة غير متوقعة: {r.status_code}"
     except requests.exceptions.ConnectionError:
-        return False, "❌ لا يمكن الاتصال — تأكد أن: ollama serve يعمل"
+        return False, "❌ لا يمكن الاتصال بـ api.x.ai"
     except requests.exceptions.Timeout:
         return False, "❌ انتهت المهلة — الخادم لا يستجيب"
     except Exception as exc:
         return False, f"❌ خطأ: {exc}"
 
 
-def local_llm_explain(
+def grok_llm_explain(
     disease: str,
     confidence: float,
-    ollama_model: str = "llama3",
-    ollama_url: str = "http://localhost:11434",
+    grok_model: str = "grok-3-beta",
+    api_key: str = "",
 ) -> str:
     """Return an LLM explanation string, or an 'ERROR: …' string on failure."""
+    if not api_key or not api_key.strip():
+        return "ERROR: أدخل مفتاح xAI API في الشريط الجانبي."
     try:
-        return _explain_via_ollama(disease, confidence, ollama_model, ollama_url)
+        return _explain_via_grok(disease, confidence, grok_model, api_key.strip())
     except requests.exceptions.ConnectionError:
-        return f"ERROR: تعذّر الاتصال بـ Ollama على {ollama_url} — تأكد أن: ollama serve يعمل"
+        return "ERROR: تعذّر الاتصال بـ api.x.ai — تحقق من اتصالك بالإنترنت."
     except requests.exceptions.Timeout:
-        return "ERROR: انتهت مهلة الاستجابة — النموذج بطيء أو غير محمّل."
+        return "ERROR: انتهت مهلة الاستجابة — حاول مرة أخرى."
     except requests.exceptions.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "?"
-        if status == 404:
-            return f"ERROR: النموذج «{ollama_model}» غير محمّل — نفّذ: ollama pull {ollama_model}"
+        if status == 401:
+            return "ERROR: مفتاح API غير صالح — تحقق من console.x.ai"
+        if status == 429:
+            return "ERROR: تجاوزت حد الطلبات — انتظر قليلاً ثم أعد المحاولة."
         return f"ERROR: HTTP {status} — {exc}"
     except Exception as exc:
         return f"ERROR: خطأ غير متوقع: {exc}"
@@ -446,7 +476,12 @@ def local_llm_explain(
 # ==============================
 @st.cache_resource
 def load_model_cached():
-    """Download (if needed) and load the EfficientNetB3 model."""
+    """Download (if needed) and load the EfficientNetB3 model.
+
+    Uses compile=False to avoid the 'batch_shape' keyword argument error
+    that occurs when a model saved with an older Keras version is loaded
+    under Keras 3 / TF 2.16+.
+    """
     if not os.path.exists(MODEL_PATH):
         with st.spinner("⬇️ جاري تحميل النموذج..."):
             gdown.download(
@@ -464,7 +499,10 @@ def load_model_cached():
         st.stop()
 
     try:
-        return load_model(MODEL_PATH)
+        # compile=False skips optimizer/loss deserialization and avoids
+        # the 'Unrecognized keyword arguments: [batch_shape]' error that
+        # appears when loading legacy Keras 2 .h5 files in TF 2.16+.
+        return load_model(MODEL_PATH, compile=False)
     except Exception as exc:
         st.error(f"❌ فشل تحميل النموذج: {exc}")
         st.stop()
@@ -553,45 +591,54 @@ st.markdown("""
 model = load_model_cached()
 
 # ==============================
-# Sidebar — Ollama LLM Settings
+# Sidebar — Grok LLM Settings
 # ==============================
 with st.sidebar:
     st.markdown("""
     <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:700;
                 color:#16a34a; margin-bottom:1rem; padding-bottom:0.5rem;
                 border-bottom:2px solid rgba(22,163,74,0.25);">
-        🤖 إعدادات الشرح الذكي (Ollama)
+        🤖 إعدادات الشرح الذكي (Grok)
     </div>
     """, unsafe_allow_html=True)
 
     enable_llm = st.toggle("🔘 تفعيل شرح LLM", value=True)
 
-    ollama_model = st.selectbox(
-        "نموذج Ollama",
-        options=["llama3", "mistral", "phi3", "gemma", "llama2", "neural-chat"],
+    grok_model = st.selectbox(
+        "نموذج Grok",
+        options=GROK_MODELS,
         index=0,
-        help="تأكد أن النموذج محمّل: ollama pull <model>",
+        help="اختر نموذج Grok من xAI",
     )
 
-    ollama_url = st.text_input(
-        "Ollama URL",
-        value="http://localhost:11434",
-        help="الرابط الافتراضي لـ Ollama",
+    grok_api_key = st.text_input(
+        "🔑 xAI API Key",
+        type="password",
+        placeholder="xai-xxxxxxxxxxxxxxxxxx",
+        help="احصل على مفتاحك من: console.x.ai",
     )
 
-    if st.button("🔌 اختبار الاتصال بـ Ollama", use_container_width=True):
-        ok, msg = _test_ollama_connection(ollama_url)
+    if st.button("🔌 اختبار الاتصال بـ Grok", use_container_width=True):
+        ok, msg = _test_grok_connection(grok_api_key)
         (st.success if ok else st.error)(msg)
 
     st.markdown("""
     <div style="margin-top:1rem; font-size:0.75rem; color:#4b7a5e; line-height:2;">
-        <span style="color:#15803d; font-weight:500;">تشغيل Ollama:</span><br>
-        <code style="background:rgba(22,163,74,0.1); color:#15803d;
-                     padding:0.15rem 0.5rem; border-radius:4px;">ollama serve</code>
+        <span style="color:#15803d; font-weight:500;">للحصول على مفتاح API:</span><br>
+        <a href="https://console.x.ai" target="_blank"
+           style="color:#16a34a; text-decoration:none;">
+            🔗 console.x.ai
+        </a>
         <br><br>
-        <span style="color:#15803d; font-weight:500;">تحميل نموذج:</span><br>
+        <span style="color:#15803d; font-weight:500;">النماذج المتاحة:</span><br>
         <code style="background:rgba(22,163,74,0.1); color:#15803d;
-                     padding:0.15rem 0.5rem; border-radius:4px;">ollama pull llama3</code>
+                     padding:0.15rem 0.5rem; border-radius:4px;">grok-3-beta</code>
+        &nbsp;·&nbsp;
+        <code style="background:rgba(22,163,74,0.1); color:#15803d;
+                     padding:0.15rem 0.5rem; border-radius:4px;">grok-3</code>
+        &nbsp;·&nbsp;
+        <code style="background:rgba(22,163,74,0.1); color:#15803d;
+                     padding:0.15rem 0.5rem; border-radius:4px;">grok-3-latest</code>
     </div>
     """, unsafe_allow_html=True)
 
@@ -746,16 +793,16 @@ with right_col:
             </div>
             """, unsafe_allow_html=True)
 
-        # ── LLM Explanation (Ollama) ──
+        # ── LLM Explanation (Grok) ──
         if enable_llm:
-            with st.spinner(f"🤖 جاري توليد الشرح الطبي عبر Ollama ({ollama_model})..."):
-                llm_result = local_llm_explain(pred, conf, ollama_model=ollama_model, ollama_url=ollama_url)
+            with st.spinner(f"🤖 جاري توليد الشرح الطبي عبر Grok ({grok_model})..."):
+                llm_result = grok_llm_explain(pred, conf, grok_model=grok_model, api_key=grok_api_key)
 
             if llm_result.startswith("ERROR:"):
                 error_msg = llm_result.replace("ERROR:", "").strip()
                 st.markdown(f"""
                 <div class="llm-card">
-                    <div class="llm-card-title">🤖 شرح النموذج اللغوي — Ollama ({ollama_model})</div>
+                    <div class="llm-card-title">🤖 شرح النموذج اللغوي — Grok ({grok_model})</div>
                     <div class="llm-error">⚠️ {error_msg}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -767,7 +814,7 @@ with right_col:
                 )
                 st.markdown(f"""
                 <div class="llm-card">
-                    <div class="llm-card-title">🤖 شرح النموذج اللغوي — Ollama ({ollama_model})</div>
+                    <div class="llm-card-title">🤖 شرح النموذج اللغوي — Grok ({grok_model})</div>
                     {lines_html}
                 </div>
                 """, unsafe_allow_html=True)
