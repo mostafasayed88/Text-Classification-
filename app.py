@@ -396,7 +396,7 @@ def _explain_via_grok(disease: str, confidence: float, grok_model: str, api_key:
         "Authorization": f"Bearer {api_key}",
     }
     payload = {
-        "model": grok_model,
+        "model": grok-4.20-reasoning,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 300,
         "temperature": 0.1,
@@ -422,7 +422,7 @@ def _test_grok_connection(api_key: str) -> tuple[bool, str]:
             "Authorization": f"Bearer {api_key.strip()}",
         }
         payload = {
-            "model": "grok-3-beta",
+            "model": "grok-4.20-reasoning",
             "messages": [{"role": "user", "content": "ping"}],
             "max_tokens": 5,
         }
