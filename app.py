@@ -23,7 +23,7 @@ from tensorflow.keras.models import load_model
 # Constants
 # ==============================
 MODEL_PATH = "efficientnetb3_retinal.h5"
-FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID"  # Replace with your actual file ID
+FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID"
 
 CLASS_NAMES = [
     "Diabetic Retinopathy",
@@ -83,7 +83,22 @@ DISEASE_INFO = {
     },
 }
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+XAI_API_URL = "https://api.x.ai/v1/chat/completions"
+
+PROMPT_TEMPLATE = """You are an ophthalmology AI assistant.
+
+Write exactly 5 short medical lines about this eye disease prediction:
+
+Prediction: {disease}
+Confidence: {confidence:.1f}%
+
+Structure (5 lines only, no headers, no repetition):
+1. Prediction statement.
+2. Short clinical definition.
+3. Key symptoms the patient may notice.
+4. Severity level (Mild / Moderate / Severe / Emergency).
+5. Recommended next step."""
+
 # ==============================
 # Page Configuration
 # ==============================
@@ -93,7 +108,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
 
 # ==============================
 # Custom CSS
@@ -116,7 +130,6 @@ st.markdown("""
     #MainMenu, footer, header { visibility: hidden; }
     .block-container { padding: 0 2rem 4rem; max-width: 1200px; }
 
-    /* ── Hero ── */
     .hero {
         position: relative;
         text-align: center;
@@ -148,22 +161,12 @@ st.markdown("""
         -webkit-text-fill-color: transparent;
         background-clip: text;
     }
-    .hero-subtitle {
-        font-size: 1rem;
-        font-weight: 300;
-        color: #4b7a5e;
-        max-width: 600px;
-        margin: 0 auto;
-        line-height: 1.75;
-        text-align: center;
-    }
     .divider {
         height: 1.5px;
         background: linear-gradient(90deg, transparent, rgba(22,163,74,0.4), transparent);
         margin: 0 0 2.5rem;
     }
 
-    /* ── Upload Section ── */
     .upload-section {
         background: #ffffff;
         border: 2px dashed rgba(22,163,74,0.35);
@@ -192,7 +195,6 @@ st.markdown("""
     [data-testid="stFileUploader"] > div { border: none !important; background: transparent !important; padding: 0 !important; }
     [data-testid="stFileUploader"] label { color: #16a34a !important; font-size: 0.9rem; }
 
-    /* ── Image Cards ── */
     .img-card {
         background: #ffffff;
         border: 1px solid #bbf7d0;
@@ -218,7 +220,6 @@ st.markdown("""
         object-fit: cover;
     }
 
-    /* ── Widgets ── */
     .stSelectbox label, .stTextInput label, .stToggle label,
     .stRadio label, .stExpander summary, p, span, div {
         color: #166534 !important;
@@ -230,7 +231,6 @@ st.markdown("""
         color: #14532d !important;
     }
 
-    /* ── Progress Bar ── */
     .stProgress > div > div > div > div {
         background: linear-gradient(90deg, #22c55e, #16a34a) !important;
         border-radius: 999px !important;
@@ -241,7 +241,6 @@ st.markdown("""
         height: 8px !important;
     }
 
-    /* ── Confidence Display ── */
     .confidence-label {
         font-size: 0.78rem;
         letter-spacing: 0.15em;
@@ -258,7 +257,6 @@ st.markdown("""
     }
     .confidence-value span { font-size: 1rem; font-weight: 400; color: #6aaa85; }
 
-    /* ── Disease Card ── */
     .disease-card {
         background: #ffffff;
         border: 1px solid #bbf7d0;
@@ -277,7 +275,6 @@ st.markdown("""
     }
     .disease-card-text { font-size: 0.85rem; color: #4b7a5e; line-height: 1.7; }
 
-    /* ── LLM Explanation Card ── */
     .llm-card {
         background: #f0fdf4;
         border: 1px solid #86efac;
@@ -315,7 +312,6 @@ st.markdown("""
         margin-top: 0.5rem;
     }
 
-    /* ── Disclaimer ── */
     .disclaimer {
         background: #fffbeb;
         border: 1px solid #fde68a;
@@ -329,20 +325,17 @@ st.markdown("""
         line-height: 1.65;
     }
 
-    /* ── Sidebar ── */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%) !important;
         border-right: 2px solid #bbf7d0 !important;
     }
 
-    /* ── Expander ── */
     .stExpander {
         background: #ffffff !important;
         border: 1px solid #bbf7d0 !important;
         border-radius: 12px !important;
     }
 
-    /* ── Button ── */
     .stButton > button {
         background: linear-gradient(135deg, #16a34a, #15803d) !important;
         color: #ffffff !important;
@@ -361,109 +354,81 @@ st.markdown("""
 
 
 # ==============================
+# Grok LLM Functions
 # ==============================
-# LLM Explanation — Ollama أو Claude API
-# ==============================
-PROMPT_TEMPLATE = """You are an ophthalmology AI assistant.
-
-Write exactly 5 short medical lines about this eye disease prediction:
-
-Prediction: {disease}
-Confidence: {confidence:.1f}%
-
-Structure (5 lines only, no headers, no repetition):
-1. Prediction statement.
-2. Short clinical definition.
-3. Key symptoms the patient may notice.
-4. Severity level (Mild / Moderate / Severe / Emergency).
-5. Recommended next step."""
-
-
 def _clean_lines(text: str) -> str:
-    """خذ أول 5 أسطر غير فارغة."""
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     return "\n".join(lines[:5])
 
 
-def _explain_via_ollama(disease: str, confidence: float, ollama_model: str, ollama_url: str) -> str:
-    prompt = PROMPT_TEMPLATE.format(disease=disease, confidence=confidence * 100)
-    payload = {
-        "model": ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.1, "num_predict": 200, "repeat_penalty": 1.2},
-    }
-    api_url = f"{ollama_url.rstrip('/')}/api/generate"
-    response = requests.post(api_url, json=payload, timeout=60)
-    response.raise_for_status()
-    raw = response.json().get("response", "").strip()
-    return _clean_lines(raw)
-
-
-def _test_ollama_connection(ollama_url: str) -> tuple:
-    """يختبر الاتصال بـ Ollama ويعيد (نجح، رسالة)."""
+def _test_grok_connection(api_key: str) -> tuple:
+    """Test the xAI Grok API connection."""
+    if not api_key.strip():
+        return False, "❌ أدخل API Key أولاً."
     try:
-        r = requests.get(ollama_url.rstrip("/"), timeout=5)
-        if r.status_code == 200:
-            return True, "✅ Ollama يعمل بنجاح!"
-        return False, f"⚠️ استجابة غير متوقعة: {r.status_code}"
+        response = requests.post(
+            XAI_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key.strip()}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "grok-3-mini",
+                "max_tokens": 10,
+                "messages": [{"role": "user", "content": "Hi"}],
+            },
+            timeout=10,
+        )
+        if response.status_code == 200:
+            return True, "✅ Grok API يعمل بنجاح!"
+        elif response.status_code == 401:
+            return False, "❌ API Key غير صالح — تحقق من المفتاح."
+        else:
+            return False, f"⚠️ استجابة غير متوقعة: {response.status_code}"
     except requests.exceptions.ConnectionError:
-        return False, "❌ لا يمكن الاتصال — تأكد أن: ollama serve يعمل"
+        return False, "❌ لا يمكن الاتصال — تحقق من اتصالك بالإنترنت."
     except requests.exceptions.Timeout:
-        return False, "❌ انتهت المهلة — الخادم لا يستجيب"
+        return False, "❌ انتهت المهلة — الخادم لا يستجيب."
     except Exception as e:
         return False, f"❌ خطأ: {e}"
 
 
-def _explain_via_claude(disease: str, confidence: float, api_key: str) -> str:
+def grok_llm_explain(disease: str, confidence: float, grok_model: str, api_key: str) -> str:
+    """Generate a medical explanation using the xAI Grok API."""
+    if not api_key.strip():
+        return "ERROR: أدخل xAI API Key في إعدادات الشريط الجانبي."
+
     prompt = PROMPT_TEMPLATE.format(disease=disease, confidence=confidence * 100)
-    response = requests.post(
-        ANTHROPIC_API_URL,
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 300,
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    raw = response.json()["content"][0]["text"].strip()
-    return _clean_lines(raw)
 
-
-def local_llm_explain(
-    disease: str,
-    confidence: float,
-    ollama_model: str = "llama3",
-    ollama_url: str = "http://localhost:11434",
-    backend: str = "ollama",
-    anthropic_api_key: str = "",
-) -> str:
     try:
-        if backend == "claude":
-            if not anthropic_api_key.strip():
-                return "ERROR: أدخل Anthropic API Key في إعدادات الشريط الجانبي."
-            return _explain_via_claude(disease, confidence, anthropic_api_key.strip())
-        else:
-            return _explain_via_ollama(disease, confidence, ollama_model, ollama_url)
+        response = requests.post(
+            XAI_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key.strip()}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": grok_model,
+                "max_tokens": 300,
+                "temperature": 0.1,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        raw = response.json()["choices"][0]["message"]["content"].strip()
+        return _clean_lines(raw)
 
     except requests.exceptions.ConnectionError:
-        if backend == "ollama":
-            return f"ERROR: تعذّر الاتصال بـ Ollama على {ollama_url} — تأكد أن: ollama serve يعمل"
-        return "ERROR: تعذّر الاتصال بـ Anthropic API — تحقق من اتصالك بالإنترنت."
+        return "ERROR: تعذّر الاتصال بـ xAI API — تحقق من اتصالك بالإنترنت."
     except requests.exceptions.Timeout:
-        return "ERROR: انتهت مهلة الاستجابة — النموذج بطيء أو غير محمّل."
+        return "ERROR: انتهت مهلة الاستجابة — حاول مجدداً."
     except requests.exceptions.HTTPError as e:
         status = e.response.status_code if e.response is not None else "?"
         if status == 401:
             return "ERROR: API Key غير صالح — تحقق من المفتاح."
-        if status == 404 and backend == "ollama":
-            return f"ERROR: النموذج «{ollama_model}» غير محمّل — نفّذ: ollama pull {ollama_model}"
+        if status == 429:
+            return "ERROR: تجاوزت حد الطلبات — انتظر قليلاً وحاول مجدداً."
         return f"ERROR: HTTP {status} — {e}"
     except Exception as e:
         return f"ERROR: خطأ غير متوقع: {e}"
@@ -474,7 +439,6 @@ def local_llm_explain(
 # ==============================
 @st.cache_resource
 def load_model_cached():
-    """Download (if needed) and load the EfficientNetB3 model."""
     if not os.path.exists(MODEL_PATH):
         with st.spinner("⬇️ جاري تحميل النموذج..."):
             gdown.download(
@@ -502,7 +466,6 @@ def load_model_cached():
 # Image Processing Helpers
 # ==============================
 def preprocess(img: Image.Image) -> np.ndarray:
-    """Resize and preprocess a PIL image for EfficientNetB3."""
     img = img.resize((300, 300))
     arr = np.array(img)
     arr = tf.keras.applications.efficientnet.preprocess_input(arr)
@@ -510,14 +473,12 @@ def preprocess(img: Image.Image) -> np.ndarray:
 
 
 def predict(img: Image.Image, model) -> tuple[str, float, np.ndarray]:
-    """Return (class_name, confidence, all_probabilities)."""
     preds = model.predict(preprocess(img))
     idx = int(np.argmax(preds[0]))
     return CLASS_NAMES[idx], float(np.max(preds)), preds[0]
 
 
 def gradcam(img: Image.Image, model) -> np.ndarray:
-    """Compute a Grad-CAM heatmap (BGR, uint8) for the top predicted class."""
     arr = np.array(img.resize((300, 300)))
     arr = tf.keras.applications.efficientnet.preprocess_input(arr)
     arr = np.expand_dims(arr, axis=0)
@@ -534,10 +495,8 @@ def gradcam(img: Image.Image, model) -> np.ndarray:
 
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(arr)
-
         if isinstance(predictions, list):
             predictions = predictions[0]
-
         if predictions.shape[-1] == 1:
             loss = predictions[:, 0]
         else:
@@ -546,7 +505,6 @@ def gradcam(img: Image.Image, model) -> np.ndarray:
 
     grads = tape.gradient(loss, conv_outputs)
     grads = grads / (tf.reduce_mean(tf.abs(grads)) + 1e-8)
-
     weights = tf.reduce_mean(grads, axis=(1, 2))
     cam = tf.reduce_sum(weights[:, None, None, :] * conv_outputs, axis=-1)[0].numpy()
 
@@ -560,7 +518,6 @@ def gradcam(img: Image.Image, model) -> np.ndarray:
 
 
 def overlay_heatmap(img: Image.Image, heatmap: np.ndarray) -> np.ndarray:
-    """Blend the original image with the Grad-CAM heatmap."""
     arr = np.array(img.resize((300, 300)))
     return cv2.addWeighted(arr, 0.75, heatmap, 0.25, 0)
 
@@ -588,7 +545,7 @@ with st.sidebar:
     <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:700;
                 color:#16a34a; margin-bottom:1rem; padding-bottom:0.5rem;
                 border-bottom:2px solid rgba(22,163,74,0.25);">
-        🤖 إعدادات الشرح الذكي (Grok)
+        🤖 إعدادات Grok (xAI)
     </div>
     """, unsafe_allow_html=True)
 
@@ -596,15 +553,15 @@ with st.sidebar:
 
     grok_model = st.selectbox(
         "نموذج Grok",
-        options="grok-4.20-reasoning",
-        index=0,
+        options=["grok-3", "grok-3-fast", "grok-3-mini", "grok-3-mini-fast"],
+        index=2,                      # default: grok-3-mini
         help="اختر نموذج Grok من xAI",
     )
 
     grok_api_key = st.text_input(
         "🔑 xAI API Key",
         type="password",
-        placeholder="xai-bjo04usdkd7qAEWFUi49DuooTxS67OQACmwGGsK6EHQttLXSQ61h4Vs5zd3WMwEodrAzSbnHdC9X65dw",
+        placeholder="xai-...",
         help="احصل على مفتاحك من: console.x.ai",
     )
 
@@ -750,8 +707,8 @@ with right_col:
     if uploaded_file:
         with st.spinner("🔍 جاري التحليل..."):
             pred, conf, all_preds = predict(image, model)
-            heatmap  = gradcam(image, model)
-            overlay  = overlay_heatmap(image, heatmap)
+            heatmap = gradcam(image, model)
+            overlay = overlay_heatmap(image, heatmap)
 
         color = SEVERITY_COLOR.get(pred, "#38bdf8")
         info  = DISEASE_INFO.get(pred, {})
