@@ -389,18 +389,9 @@ with left:
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================================================
-# RIGHT
 # =========================================================
-
-with right:
-
-    if uploaded_file:
-
-        with st.spinner("Analyzing image..."):
-
-            pred, conf, all_preds = predict(image, model)
-
-            heatmap = gradcam(image, model)
+# OVERLAY FUNCTION
+# =========================================================
 
 def overlay_heatmap(img, heatmap):
 
@@ -409,19 +400,25 @@ def overlay_heatmap(img, heatmap):
 
     original = np.array(img)
 
-    # تأكد أن heatmap ثلاثي القنوات
+    # لو heatmap grayscale
     if len(heatmap.shape) == 2:
-        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_GRAY2BGR)
+        heatmap = cv2.cvtColor(
+            heatmap,
+            cv2.COLOR_GRAY2BGR
+        )
 
-    # تأكد من نفس الحجم
-    heatmap = cv2.resize(heatmap, (300, 300))
+    # نفس الحجم
+    heatmap = cv2.resize(
+        heatmap,
+        (300, 300)
+    )
 
-    # تحويل datatype
+    # datatype
     original = original.astype(np.uint8)
 
     heatmap = heatmap.astype(np.uint8)
 
-    # دمج الصور
+    # overlay
     overlay = cv2.addWeighted(
         original,
         0.7,
@@ -431,19 +428,81 @@ def overlay_heatmap(img, heatmap):
     )
 
     return overlay
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+
+
+# =========================================================
+# RIGHT
+# =========================================================
+
+with right:
+
+    if uploaded_file:
+
+        with st.spinner("Analyzing image..."):
+
+            pred, conf, all_preds = predict(
+                image,
+                model
+            )
+
+            heatmap = gradcam(
+                image,
+                model
+            )
+
+            overlay = overlay_heatmap(
+                image,
+                heatmap
+            )
+
+        # =============================================
+        # RESULT CARD
+        # =============================================
+
+        st.markdown(
+            '<div class="card">',
+            unsafe_allow_html=True
+        )
 
         st.markdown(
             f'<div class="result">Prediction: {pred}</div>',
             unsafe_allow_html=True
         )
 
-        st.progress(int(conf * 100))
+        st.progress(
+            int(conf * 100)
+        )
 
-        st.write(f"Confidence: {conf*100:.2f}%")
+        st.write(
+            f"Confidence: {conf*100:.2f}%"
+        )
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True
+        )
 
+        # =============================================
+        # IMAGES
+        # =============================================
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+
+            st.image(
+                heatmap,
+                channels="BGR",
+                caption="GradCAM"
+            )
+
+        with c2:
+
+            st.image(
+                overlay,
+                channels="BGR",
+                caption="Overlay"
+            )
         # =================================================
         # GROK
         # =================================================
