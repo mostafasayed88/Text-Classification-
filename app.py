@@ -297,73 +297,9 @@ st.markdown("""
 
 
 # ==============================
-# Constants
 # ==============================
-MODEL_PATH  = "best_efficientnetb3.h5"
-FILE_ID     = "1qnrKRAWa7UU5YbtT2UqGDbJij7uH6dIz"
-
-# Grok API (xAI — OpenAI-compatible)
-GROK_API_BASE = "https://api.x.ai/v1"
-GROK_MODELS   = ["grok-3", "grok-3-fast", "grok-3-mini", "grok-3-mini-fast", "grok-3-beta", "grok-3-latest"]
-
-CLASS_NAMES = [
-    "Diabetic Retinopathy",
-    "Disc Edema",
-    "Healthy",
-    "Myopia",
-    "Pterygium",
-    "Retinal Detachment",
-    "Retinitis Pigmentosa",
-]
-
-SEVERITY_COLOR = {
-    "Healthy":               "#22c55e",
-    "Myopia":                "#f59e0b",
-    "Pterygium":             "#f59e0b",
-    "Diabetic Retinopathy":  "#ef4444",
-    "Disc Edema":            "#ef4444",
-    "Retinal Detachment":    "#dc2626",
-    "Retinitis Pigmentosa":  "#ef4444",
-}
-
-DISEASE_INFO = {
-    "Diabetic Retinopathy": {
-        "desc":   "تلف في أوعية الدم الدقيقة بشبكية العين نتيجة مرض السكري. يُعدّ من الأسباب الرئيسية للعمى لدى البالغين.",
-        "action": "يُنصح بفحص دوري كل 6 أشهر ومراقبة مستوى السكر في الدم.",
-        "icon":   "🩺",
-    },
-    "Disc Edema": {
-        "desc":   "تورم في القرص البصري قد يشير إلى ارتفاع ضغط الدم داخل الجمجمة أو اضطرابات عصبية.",
-        "action": "يتطلب تقييمًا عصبيًا عاجلاً وصور أشعة للدماغ.",
-        "icon":   "🧠",
-    },
-    "Healthy": {
-        "desc":   "لم يُكتشف أي مؤشر مرضي. تبدو شبكية العين سليمة وبحالة جيدة.",
-        "action": "حافظ على فحوصات دورية سنوية للعين للاطمئنان على صحتها.",
-        "icon":   "✅",
-    },
-    "Myopia": {
-        "desc":   "قِصَر النظر: صعوبة في رؤية الأشياء البعيدة بوضوح بسبب طول محور مقلة العين.",
-        "action": "يمكن تصحيحه بالنظارات أو العدسات اللاصقة أو جراحة الليزر.",
-        "icon":   "👓",
-    },
-    "Pterygium": {
-        "desc":   "نسيج ليفي وعائي ينمو على سطح القرنية من الملتحمة، وقد يؤثر على الرؤية.",
-        "action": "قد يحتاج إلى استئصال جراحي إذا تقدّم نحو مركز القرنية.",
-        "icon":   "🔬",
-    },
-    "Retinal Detachment": {
-        "desc":   "انفصال الشبكية عن طبقة الظهارة الصباغية، وهو طارئ طبي يستوجب تدخلاً فوريًا.",
-        "action": "توجّه فورًا إلى أقرب طوارئ عيون — يمكن أن يؤدي التأخير إلى فقدان البصر نهائيًا.",
-        "icon":   "🚨",
-    },
-    "Retinitis Pigmentosa": {
-        "desc":   "مجموعة اضطرابات وراثية تُسبب تدهورًا تدريجيًا في خلايا الشبكية المستقبلة للضوء.",
-        "action": "لا يوجد علاج شافٍ حتى الآن؛ التدبير يركز على إبطاء التقدم وتحسين جودة الحياة.",
-        "icon":   "🧬",
-    },
-}
-
+# LLM Explanation — Ollama أو Claude API
+# ==============================
 PROMPT_TEMPLATE = """You are an ophthalmology AI assistant.
 
 Write exactly 5 short medical lines about this eye disease prediction:
@@ -379,121 +315,94 @@ Structure (5 lines only, no headers, no repetition):
 5. Recommended next step."""
 
 
-# ==============================
-# Grok LLM Helpers
-# ==============================
 def _clean_lines(text: str) -> str:
-    """Return the first 5 non-empty lines of *text*."""
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    """خذ أول 5 أسطر غير فارغة."""
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
     return "\n".join(lines[:5])
 
 
-def _explain_via_grok(disease: str, confidence: float, grok_model: str, api_key: str) -> str:
-    """Call the xAI Grok API (OpenAI-compatible) and return a cleaned 5-line explanation."""
+def _explain_via_ollama(disease: str, confidence: float, ollama_model: str, ollama_url: str) -> str:
     prompt = PROMPT_TEMPLATE.format(disease=disease, confidence=confidence * 100)
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-    }
     payload = {
-        "model": grok_model,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 300,
-        "temperature": 0.1,
+        "model": ollama_model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": 0.1, "num_predict": 200, "repeat_penalty": 1.2},
     }
-    response = requests.post(
-        f"{GROK_API_BASE}/chat/completions",
-        headers=headers,
-        json=payload,
-        timeout=60,
-    )
+    api_url = f"{ollama_url.rstrip('/')}/api/generate"
+    response = requests.post(api_url, json=payload, timeout=60)
     response.raise_for_status()
-    raw = response.json()["choices"][0]["message"]["content"].strip()
+    raw = response.json().get("response", "").strip()
     return _clean_lines(raw)
 
 
-def _test_grok_connection(api_key: str) -> tuple[bool, str]:
-    """Ping the xAI API with a minimal request. Return (success, message)."""
-    if not api_key or not api_key.strip():
-        return False, "❌ مفتاح API فارغ — أدخل مفتاحك من console.x.ai"
+def _test_ollama_connection(ollama_url: str) -> tuple:
+    """يختبر الاتصال بـ Ollama ويعيد (نجح، رسالة)."""
     try:
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key.strip()}",
-        }
-        payload = {
-            "model": "grok-3-beta",
-            "messages": [{"role": "user", "content": "ping"}],
-            "max_tokens": 5,
-        }
-        r = requests.post(
-            f"{GROK_API_BASE}/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=15,
-        )
+        r = requests.get(ollama_url.rstrip("/"), timeout=5)
         if r.status_code == 200:
-            return True, "✅ Grok API يعمل بنجاح!"
-        if r.status_code == 401:
-            return False, "❌ مفتاح API غير صالح — تحقق من console.x.ai"
+            return True, "✅ Ollama يعمل بنجاح!"
         return False, f"⚠️ استجابة غير متوقعة: {r.status_code}"
     except requests.exceptions.ConnectionError:
-        return False, "❌ لا يمكن الاتصال بـ api.x.ai"
+        return False, "❌ لا يمكن الاتصال — تأكد أن: ollama serve يعمل"
     except requests.exceptions.Timeout:
         return False, "❌ انتهت المهلة — الخادم لا يستجيب"
-    except Exception as exc:
-        return False, f"❌ خطأ: {exc}"
+    except Exception as e:
+        return False, f"❌ خطأ: {e}"
 
 
-def grok_llm_explain(
+def _explain_via_claude(disease: str, confidence: float, api_key: str) -> str:
+    prompt = PROMPT_TEMPLATE.format(disease=disease, confidence=confidence * 100)
+    response = requests.post(
+        ANTHROPIC_API_URL,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    raw = response.json()["content"][0]["text"].strip()
+    return _clean_lines(raw)
+
+
+def local_llm_explain(
     disease: str,
     confidence: float,
-    grok_model: str = "grok-3-beta",
-    api_key: str = "",
+    ollama_model: str = "llama3",
+    ollama_url: str = "http://localhost:11434",
+    backend: str = "ollama",
+    anthropic_api_key: str = "",
 ) -> str:
-    """Return an LLM explanation string, or an 'ERROR: …' string on failure."""
-    if not api_key or not api_key.strip():
-        return "ERROR: أدخل مفتاح xAI API في الشريط الجانبي."
     try:
-        return _explain_via_grok(disease, confidence, grok_model, api_key.strip())
+        if backend == "claude":
+            if not anthropic_api_key.strip():
+                return "ERROR: أدخل Anthropic API Key في إعدادات الشريط الجانبي."
+            return _explain_via_claude(disease, confidence, anthropic_api_key.strip())
+        else:
+            return _explain_via_ollama(disease, confidence, ollama_model, ollama_url)
+
     except requests.exceptions.ConnectionError:
-        return "ERROR: تعذّر الاتصال بـ api.x.ai — تحقق من اتصالك بالإنترنت."
+        if backend == "ollama":
+            return f"ERROR: تعذّر الاتصال بـ Ollama على {ollama_url} — تأكد أن: ollama serve يعمل"
+        return "ERROR: تعذّر الاتصال بـ Anthropic API — تحقق من اتصالك بالإنترنت."
     except requests.exceptions.Timeout:
-        return "ERROR: انتهت مهلة الاستجابة — حاول مرة أخرى."
-    except requests.exceptions.HTTPError as exc:
-        status = exc.response.status_code if exc.response is not None else "?"
+        return "ERROR: انتهت مهلة الاستجابة — النموذج بطيء أو غير محمّل."
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else "?"
         if status == 401:
-            return "ERROR: مفتاح API غير صالح — تحقق من console.x.ai"
-        if status == 429:
-            return "ERROR: تجاوزت حد الطلبات — انتظر قليلاً ثم أعد المحاولة."
-        return f"ERROR: HTTP {status} — {exc}"
-    except Exception as exc:
-        return f"ERROR: خطأ غير متوقع: {exc}"
-
-
-# ==============================
-# Legacy Keras 2 → Keras 3 Compatibility Patch
-# ==============================
-# Capture the real __init__ at module level so the closure always finds it.
-_ORIGINAL_INPUT_LAYER_INIT = tf.keras.layers.InputLayer.__init__
-
-
-def _patched_input_layer_init(self, *args, **kwargs):
-    """
-    Keras 3 / TF 2.16+ removed 'batch_shape' from InputLayer.__init__.
-    Models saved with Keras 2 store it in their JSON config, causing:
-        Unrecognized keyword arguments: ['batch_shape']
-    We silently convert it to 'shape' before the real constructor runs.
-    """
-    if "batch_shape" in kwargs:
-        batch_shape = kwargs.pop("batch_shape")
-        # batch_shape = [None, H, W, C] — drop the leading None batch dim
-        shape = tuple(batch_shape[1:]) if (batch_shape and batch_shape[0] is None) else tuple(batch_shape)
-        kwargs.setdefault("shape", shape)
-    _ORIGINAL_INPUT_LAYER_INIT(self, *args, **kwargs)
-
-
-tf.keras.layers.InputLayer.__init__ = _patched_input_layer_init
+            return "ERROR: API Key غير صالح — تحقق من المفتاح."
+        if status == 404 and backend == "ollama":
+            return f"ERROR: النموذج «{ollama_model}» غير محمّل — نفّذ: ollama pull {ollama_model}"
+        return f"ERROR: HTTP {status} — {e}"
+    except Exception as e:
+        return f"ERROR: خطأ غير متوقع: {e}"
 
 
 # ==============================
